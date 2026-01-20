@@ -1,31 +1,27 @@
 package com.idormy.sms.forwarder.server.controller
 
-import com.idormy.sms.forwarder.utils.HttpServerUtils
-import com.yanzhenjie.andserver.annotation.GetMapping
-import com.yanzhenjie.andserver.annotation.RequestMapping
-import com.yanzhenjie.andserver.annotation.RestController
+import com.idormy.sms.forwarder.server.model.BaseRequest
+import com.idormy.sms.forwarder.server.model.EmptyData
+import com.yanzhenjie.andserver.annotation.*
 import java.net.Inet6Address
 import java.net.NetworkInterface
 import java.util.Collections
 
 @RestController
-@RequestMapping("/ipv6")
+@RequestMapping(path = ["/ipv6"])
 class Ipv6Controller {
 
-    @GetMapping("/query")
-    fun query(): String {
-        val ipv6Addr = getIPv6Address()
-        return if (ipv6Addr.isNotEmpty()) {
-            // 返回成功结构
-            HttpServerUtils.response(200, "success", mapOf("ipv6" to ipv6Addr))
-        } else {
-            // 返回失败结构
-            HttpServerUtils.response(500, "未找到有效的IPv6地址", null)
-        }
+    // 远程查IPv6
+    // 模仿 BatteryController 的写法，使用 BaseRequest 接收请求
+    @CrossOrigin(methods = [RequestMethod.POST])
+    @PostMapping("/query")
+    fun query(@RequestBody bean: BaseRequest<EmptyData>): Map<String, String> {
+        // 直接返回 Map，AndServer 会自动把它变成 JSON 格式的 "data" 部分
+        return mapOf("ipv6" to getIPv6Address())
     }
 
     /**
-     * 获取本机 IPv6 地址 (过滤掉环回地址和链路本地地址)
+     * 获取本机 IPv6 地址的工具方法
      */
     private fun getIPv6Address(): String {
         try {
@@ -33,8 +29,8 @@ class Ipv6Controller {
             for (intf in interfaces) {
                 val addrs = Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
+                    // 过滤掉回环地址(::1)和链路本地地址(fe80开头)
                     if (!addr.isLoopbackAddress && addr is Inet6Address && !addr.isLinkLocalAddress) {
-                        // 也就是不以 fe80 开头的 IPv6
                         val hostAddress = addr.hostAddress
                         if (!hostAddress.isNullOrEmpty()) {
                             // 移除可能存在的 Scope ID (例如 %wlan0)
@@ -47,6 +43,6 @@ class Ipv6Controller {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return ""
+        return "未获取到IPv6地址"
     }
 }
