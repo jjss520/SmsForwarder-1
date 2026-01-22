@@ -11,38 +11,52 @@ import java.util.Collections
 @RequestMapping(path = ["/ipv6"])
 class Ipv6Controller {
 
-    // 远程查IPv6
-    // 模仿 BatteryController 的写法，使用 BaseRequest 接收请求
     @CrossOrigin(methods = [RequestMethod.POST])
     @PostMapping("/query")
     fun query(@RequestBody bean: BaseRequest<EmptyData>): Map<String, String> {
-        // 直接返回 Map，AndServer 会自动把它变成 JSON 格式的 "data" 部分
         return mapOf("ipv6" to getIPv6Address())
     }
 
     /**
-     * 获取本机 IPv6 地址的工具方法
+     * 获取本机 IPv6 地址 (强制优先获取 2xxx 开头的公网地址)
      */
     private fun getIPv6Address(): String {
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            // 定义一个变量存备胎（如果找不到公网的，就随便返回一个非本地的）
+            var fallbackIp = ""
+
             for (intf in interfaces) {
                 val addrs = Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
-                    // 过滤掉回环地址(::1)和链路本地地址(fe80开头)
                     if (!addr.isLoopbackAddress && addr is Inet6Address && !addr.isLinkLocalAddress) {
                         val hostAddress = addr.hostAddress
                         if (!hostAddress.isNullOrEmpty()) {
-                            // 移除可能存在的 Scope ID (例如 %wlan0)
-                            val index = hostAddress.indexOf('%')
-                            return if (index > 0) hostAddress.substring(0, index) else hostAddress
+                            // 处理 Scope ID (如 %wlan0)
+                            val cleanIp = if (hostAddress.indexOf('%') > 0) 
+                                hostAddress.substring(0, hostAddress.indexOf('%')) 
+                                else hostAddress
+
+                            // 🎯 核心修改：如果是 2 开头（公网地址），直接返回！
+                            if (cleanIp.startsWith("2")) {
+                                return cleanIp
+                            }
+
+                            // 如果不是 2 开头（比如 fd 开头），先存起来当备胎
+                            if (fallbackIp.isEmpty()) {
+                                fallbackIp = cleanIp
+                            }
                         }
                     }
                 }
             }
+            // 如果循环完了都没找到 2 开头的，那就返回备胎（fd开头的），总比没有好
+            // 或者你也可以直接 return "" 宁缺毋滥
+            return fallbackIp 
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return "未获取到IPv6地址"
+        return ""
     }
 }
