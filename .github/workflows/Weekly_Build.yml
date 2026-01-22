@@ -1,15 +1,17 @@
 name: Weekly Build
 
-# 触发器
+# 触发器：手动触发
 on:
-  schedule:
-    - cron: '0 15 * * 0' #每周天在国际标准时间15点(北京时间+8，即 23:00)
   workflow_dispatch:
     inputs:
       root_sol:
-        description: "Weekly Build Title"
+        description: "Build Title"
         required: true
         default: "SmsForwarder"
+
+# ⚠️ 关键：赋予写权限，否则无法创建 Release
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -17,90 +19,83 @@ jobs:
     env:
       output: "${{ github.workspace }}/build/app/outputs/apk/release"
     steps:
-      # 检出代码
+      # 1. 检出代码
       - uses: actions/checkout@v4
-      # 删除旧的工作流
-      - name: Delete Weekly Build
+      
+      # 2. 删除旧的工作流记录 (保持页面整洁)
+      - name: Delete Old Workflows
         uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ secrets.TOKEN }}
           repository: ${{ github.repository }}
-          retain_days: 0 # 全部删除只留正在跑的一条
-          keep_minimum_runs: 0 # 全部删除只留正在跑的一条
+          retain_days: 0
+          keep_minimum_runs: 0
           delete_workflow_pattern: 'Weekly Build'
-      # 设置jdk环境为11
+          
+      # 3. 设置 JDK 11
       - name: set up JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '11'
           java-package: jdk
-      # 获取打包秘钥
+          
+      # 4. 获取打包秘钥 (注意仓库地址)
       - name: Checkout Android Keystore
         uses: actions/checkout@v4
         with:
-          repository: jjss520/keystore   # ⚠️ 注意：这里要确保是你自己的私有仓库地址
-          token: ${{ secrets.TOKEN }} # 连接仓库的token,需要单独配置
-          path: keystore # 仓库的根目录名
-      # 打包release
+          repository: jjss520/keystore   # ⚠️ 确认这是你的私有仓库
+          token: ${{ secrets.TOKEN }}
+          path: keystore
+          
+      # 5. 开始编译
       - name: Build with Gradle
         run: bash ./gradlew assembleRelease
       
-      # ✅ 修改点：只解析版本号，不上传 XUpdate
-      - name: Parse output-metadata.json (Extract Version Info)
+      # 6. 解析版本号 (为了给 Release 命名)
+      - name: Parse output-metadata.json
         run: |
           metadata_file="${{ env.output }}/output-metadata.json"
+          # 只要找到一个 apk 文件即可提取版本信息
+          apk=$(jq -r '.elements[0].outputFile' "$metadata_file")
           
-          # 遍历 elements，并从 outputFile 中提取 versionName 和 versionCode
-          jq -r '.elements | sort_by(.outputFile) | .[].outputFile' "$metadata_file" |
-          while IFS= read -r apk; do
-              echo "APK: $apk"
-              # 使用正则表达式从文件名中提取 versionName、versionCode 和 ABI
-              if [[ $apk =~ SmsF_([^_]+)_([^_]+)_(.+)_release.apk ]]; then
-                  versionName="${BASH_REMATCH[1]}"
-                  versionCode="${BASH_REMATCH[2]}"
-                  abi="${BASH_REMATCH[3]}"
-                  
-                  # 将提取到的版本号写入环境变量，供后续步骤使用
-                  echo "ver_name=$versionName" >> $GITHUB_ENV
-                  echo "ver_code=${versionCode: -3}" >> $GITHUB_ENV
-                  
-                  echo "Extracted: $versionName / $versionCode"
-              fi
-          done
+          if [[ $apk =~ SmsF_([^_]+)_([^_]+)_(.+)_release.apk ]]; then
+              versionName="${BASH_REMATCH[1]}"
+              versionCode="${BASH_REMATCH[2]}"
+              
+              # 写入环境变量
+              echo "ver_name=$versionName" >> $GITHUB_ENV
+              echo "ver_code=${versionCode: -3}" >> $GITHUB_ENV # 取最后3位
+              
+              echo "✅ 解析成功: v$versionName ($versionCode)"
+          else
+              echo "❌ 解析文件名失败，使用默认时间戳作为版本号"
+              echo "ver_name=$(date +%Y%m%d)" >> $GITHUB_ENV
+              echo "ver_code=$(date +%H%M)" >> $GITHUB_ENV
+          fi
 
-      # 存档打包的文件
-      - name: Upload App To Artifact universal
-        if: success () || failure ()
+      # 7. 发布到 GitHub Releases 🚀
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          # Tag 命名格式：v3.3.3_100054 (这样每次版本号变动都会发新版)
+          tag_name: v${{ env.ver_name }}_${{ env.ver_code }}
+          name: SmsForwarder v${{ env.ver_name }} (Build ${{ env.ver_code }})
+          body: |
+            自动化编译构建
+            - 包含 IPv6 查询接口补丁
+            - 编译时间: ${{ steps.date.outputs.date }}
+          draft: false
+          prerelease: false
+          # 使用通配符上传所有 APK
+          files: ${{ env.output }}/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }} # 使用你的 TOKEN 才有权限发布
+
+      # 8. (可选) 依然保留 Artifacts 备份，防止 Release 失败没地方下
+      - name: Upload Artifacts Backup
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: "SmsF_${{ env.ver_name }}_100${{ env.ver_code }}_universal_release.apk"
-          path: "${{ env.output }}/SmsF_*_universal_release.apk"
-          
-      - name: Upload App To Artifact armeabi-v7a
-        if: success () || failure ()
-        uses: actions/upload-artifact@v4
-        with:
-          name: "SmsF_${{ env.ver_name }}_200${{ env.ver_code }}_armeabi-v7a_release.apk"
-          path: "${{ env.output }}/SmsF_*_armeabi-v7a_release.apk"
-          
-      - name: Upload App To Artifact arm64-v8a
-        if: success () || failure ()
-        uses: actions/upload-artifact@v4
-        with:
-          name: "SmsF_${{ env.ver_name }}_300${{ env.ver_code }}_arm64-v8a_release.apk"
-          path: "${{ env.output }}/SmsF_*_arm64-v8a_release.apk"
-          
-      - name: Upload App To Artifact x86
-        if: success () || failure ()
-        uses: actions/upload-artifact@v4
-        with:
-          name: "SmsF_${{ env.ver_name }}_400${{ env.ver_code }}_x86_release.apk"
-          path: "${{ env.output }}/SmsF_*_x86_release.apk"
-          
-      - name: Upload App To Artifact x86_64
-        if: success () || failure ()
-        uses: actions/upload-artifact@v4
-        with:
-          name: "SmsF_${{ env.ver_name }}_500${{ env.ver_code }}_x86_64_release.apk"
-          path: "${{ env.output }}/SmsF_*_x86_64_release.apk"
+          name: "SmsForwarder_v${{ env.ver_name }}_All_APKs"
+          path: "${{ env.output }}/*.apk"
