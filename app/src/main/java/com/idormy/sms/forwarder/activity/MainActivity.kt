@@ -1,9 +1,10 @@
 package com.idormy.sms.forwarder.activity
 
 import android.app.ActivityManager
-import android.app.AlertDialog // 使用原生 Dialog
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color // 🔥新增：用于设置黑色
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
@@ -108,8 +109,6 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // onCreate里不调锁屏，交给 onResume 统一处理
-
         initData()
         initViews()
         initSlidingMenu(savedInstanceState)
@@ -157,7 +156,7 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
         }
     }
 
-    // 🔥【关键】每次切回前台都会执行
+    // 每次切回前台都会执行
     override fun onResume() {
         super.onResume()
         showHardcoreLock()
@@ -405,11 +404,9 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
     }
 
-    // 🔥【关键修复】使用原生 AlertDialog + 强制亮色主题
-    // 解决“看不清字”和“崩溃”问题
+    // 🔥【关键修复】强制设置按钮为黑色
     private fun showHardcoreLock() {
         if (isLockDialogShowing) return
-        // 增加额外判断：如果Activity正在销毁，就不弹了，防止崩
         if (isFinishing || isDestroyed) return
 
         isLockDialogShowing = true
@@ -419,8 +416,6 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
         val inputEdit = EditText(this)
         inputEdit.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         
-        // 强制使用亮色主题 (Theme_DeviceDefault_Light_Dialog_Alert)
-        // 这样文字就是黑的，背景是白的，按钮是黑的/蓝的
         val builder = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
             .setTitle("🔒 安全锁定")
             .setMessage("请输入启动密码：")
@@ -430,7 +425,6 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
                 val input = inputEdit.text.toString()
                 if (input == mySecretCode) {
                     isLockDialogShowing = false
-                    // 验证通过
                 } else {
                     finish()
                     exitProcess(0)
@@ -448,6 +442,9 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
         val dialog = builder.create()
         dialog.setCanceledOnTouchOutside(false)
         dialog.show()
+
+        // 🔥🔥🔥【最后一步】弹窗显示后，强制把“进入”按钮改成黑色 🔥🔥🔥
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.BLACK)
     }
 
 }
