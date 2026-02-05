@@ -1,6 +1,7 @@
 package com.idormy.sms.forwarder.activity
 
 import android.app.ActivityManager
+import android.app.AlertDialog // 使用原生 Dialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -90,7 +91,7 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
     private val POS_ABOUT = 12
     private var needToAppListFragment = false
 
-    // 🔥新增：防止弹窗重复显示的标志位
+    // 标志位：防止弹窗重复显示
     private var isLockDialogShowing = false
 
     private lateinit var mTabLayout: TabLayout
@@ -106,7 +107,8 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 注意：这里去掉了 showHardcoreLock()，移到了 onResume
+        
+        // onCreate里不调锁屏，交给 onResume 统一处理
 
         initData()
         initViews()
@@ -155,7 +157,7 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
         }
     }
 
-    // 🔥【关键修改】每次从后台回到前台，都会触发这个方法
+    // 🔥【关键】每次切回前台都会执行
     override fun onResume() {
         super.onResume()
         showHardcoreLock()
@@ -308,16 +310,13 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
                         override fun onResult(grantedList: MutableList<IPermission>, deniedList: MutableList<IPermission>) {
                             val allGranted = deniedList.isEmpty()
                             if (!allGranted) {
-                                // 判断请求失败的权限是否被用户勾选了不再询问的选项
                                 val doNotAskAgain = XXPermissions.isDoNotAskAgainPermissions(getTopActivity(), deniedList)
                                 if (doNotAskAgain) {
                                     XXPermissions.startPermissionActivity(getContext(), deniedList)
                                 }
-                                // 处理权限请求失败的逻辑
                                 XToastUtils.error(R.string.tips_get_installed_apps)
                                 return
                             }
-                            // 处理权限请求成功的逻辑
                             if (App.UserAppList.isEmpty() && App.SystemAppList.isEmpty()) {
                                 XToastUtils.info(getString(R.string.loading_app_list))
                                 val request = OneTimeWorkRequestBuilder<LoadAppListWorker>().build()
@@ -343,7 +342,6 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
             .withSelectedTextTint(ThemeUtils.getMainThemeColor(this))
     }
 
-    //动态加载FrpcLib
     private fun downloadFrpcLib() {
         val cpuAbi = when (Build.CPU_ABI) {
             "x86" -> "x86"
@@ -407,47 +405,49 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
     }
 
-    // 🔥【关键修改】改用 MaterialDialog (解决文字看不见)，并适配 onResume 调用
+    // 🔥【关键修复】使用原生 AlertDialog + 强制亮色主题
+    // 解决“看不清字”和“崩溃”问题
     private fun showHardcoreLock() {
-        // 如果当前已经显示了锁屏弹窗，就不要再弹一个新的了
         if (isLockDialogShowing) return
-        
-        // 标记为正在显示
+        // 增加额外判断：如果Activity正在销毁，就不弹了，防止崩
+        if (isFinishing || isDestroyed) return
+
         isLockDialogShowing = true
 
-        val mySecretCode = "84030973" // 你的密码
+        val mySecretCode = "8888" // 你的密码
 
         val inputEdit = EditText(this)
         inputEdit.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         
-        // 使用 XUI 的 MaterialDialog，自动适配主题颜色，按钮文字清晰可见
-        MaterialDialog.Builder(this)
-            .title("🔒 安全锁定")
-            .content("请输入启动密码：")
-            .customView(inputEdit, true) // 嵌入输入框
-            .cancelable(false) // 禁止点击外部关闭
-            .autoDismiss(false) // 只有密码正确才手动关闭
-            .positiveText("进入")
-            .onPositive { dialog, _ ->
+        // 强制使用亮色主题 (Theme_DeviceDefault_Light_Dialog_Alert)
+        // 这样文字就是黑的，背景是白的，按钮是黑的/蓝的
+        val builder = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
+            .setTitle("🔒 安全锁定")
+            .setMessage("请输入启动密码：")
+            .setView(inputEdit)
+            .setCancelable(false)
+            .setPositiveButton("进入") { _, _ ->
                 val input = inputEdit.text.toString()
                 if (input == mySecretCode) {
                     isLockDialogShowing = false
-                    dialog.dismiss()
-                    Toast.makeText(this, "验证通过", Toast.LENGTH_SHORT).show()
+                    // 验证通过
                 } else {
-                    // 密码错误，直接自杀
                     finish()
                     exitProcess(0)
                 }
             }
-            .keyListener { _, keyCode, _ ->
-                // 拦截返回键
-                if (keyCode == KeyEvent.KEYCODE_BACK) {
-                    finish()
-                    exitProcess(0)
-                }
-                true
+
+        builder.setOnKeyListener { _, keyCode, _ ->
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                finish()
+                exitProcess(0)
             }
-            .show()
+            true
+        }
+
+        val dialog = builder.create()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
     }
+
 }
