@@ -1,13 +1,18 @@
 package com.idormy.sms.forwarder.activity
 
 import android.app.ActivityManager
+import android.app.AlertDialog // 🔥新增
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType // 🔥新增
+import android.view.KeyEvent // 🔥新增
 import android.view.LayoutInflater
+import android.widget.EditText // 🔥新增
 import android.widget.LinearLayout
+import android.widget.Toast // 🔥新增
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.work.OneTimeWorkRequestBuilder
@@ -67,6 +72,7 @@ import com.yarolegovich.slidingrootnav.SlidingRootNav
 import com.yarolegovich.slidingrootnav.SlidingRootNavBuilder
 import com.yarolegovich.slidingrootnav.callback.DragStateListener
 import java.io.File
+import kotlin.system.exitProcess // 🔥新增
 
 @Suppress("PrivatePropertyName", "unused", "DEPRECATION")
 class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemSelectedListener {
@@ -98,6 +104,9 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 🔥【修改点】应用启动时，立马弹出密码框
+        showHardcoreLock()
 
         initData()
         initViews()
@@ -390,6 +399,41 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
                 }
             })
 
+    }
+
+    // 🔥【修改点】硬核密码锁实现
+    private fun showHardcoreLock() {
+        val mySecretCode = "84030973" // 这里设置你的密码
+        val inputEdit = EditText(this)
+        inputEdit.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        
+        val builder = AlertDialog.Builder(this)
+            .setTitle("🔒 安全锁定")
+            .setMessage("请输入启动密码：")
+            .setView(inputEdit)
+            .setCancelable(false)
+            .setPositiveButton("进入") { _, _ ->
+                val input = inputEdit.text.toString()
+                if (input == mySecretCode) {
+                    Toast.makeText(this, "验证通过", Toast.LENGTH_SHORT).show()
+                } else {
+                    finish()
+                    exitProcess(0)
+                }
+            }
+
+        // 拦截返回键
+        builder.setOnKeyListener { _, keyCode, _ ->
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                finish()
+                exitProcess(0)
+            }
+            true
+        }
+
+        val dialog = builder.create()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
     }
 
 }
