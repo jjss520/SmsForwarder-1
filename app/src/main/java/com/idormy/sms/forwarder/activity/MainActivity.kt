@@ -1,18 +1,17 @@
 package com.idormy.sms.forwarder.activity
 
 import android.app.ActivityManager
-import android.app.AlertDialog // 🔥新增
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType // 🔥新增
-import android.view.KeyEvent // 🔥新增
+import android.text.InputType
+import android.view.KeyEvent
 import android.view.LayoutInflater
-import android.widget.EditText // 🔥新增
+import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.Toast // 🔥新增
+import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.work.OneTimeWorkRequestBuilder
@@ -72,7 +71,7 @@ import com.yarolegovich.slidingrootnav.SlidingRootNav
 import com.yarolegovich.slidingrootnav.SlidingRootNavBuilder
 import com.yarolegovich.slidingrootnav.callback.DragStateListener
 import java.io.File
-import kotlin.system.exitProcess // 🔥新增
+import kotlin.system.exitProcess
 
 @Suppress("PrivatePropertyName", "unused", "DEPRECATION")
 class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemSelectedListener {
@@ -91,6 +90,9 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
     private val POS_ABOUT = 12
     private var needToAppListFragment = false
 
+    // 🔥新增：防止弹窗重复显示的标志位
+    private var isLockDialogShowing = false
+
     private lateinit var mTabLayout: TabLayout
     private lateinit var mSlidingRootNav: SlidingRootNav
     private lateinit var mLLMenu: LinearLayout
@@ -104,9 +106,7 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 🔥【修改点】应用启动时，立马弹出密码框
-        showHardcoreLock()
+        // 注意：这里去掉了 showHardcoreLock()，移到了 onResume
 
         initData()
         initViews()
@@ -153,6 +153,12 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
                 openNewPage(AppListFragment::class.java)
             }
         }
+    }
+
+    // 🔥【关键修改】每次从后台回到前台，都会触发这个方法
+    override fun onResume() {
+        super.onResume()
+        showHardcoreLock()
     }
 
     override val isSupportSlideBack: Boolean
@@ -401,39 +407,47 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
     }
 
-    // 🔥【修改点】硬核密码锁实现
+    // 🔥【关键修改】改用 MaterialDialog (解决文字看不见)，并适配 onResume 调用
     private fun showHardcoreLock() {
-        val mySecretCode = "84030973" // 这里设置你的密码
+        // 如果当前已经显示了锁屏弹窗，就不要再弹一个新的了
+        if (isLockDialogShowing) return
+        
+        // 标记为正在显示
+        isLockDialogShowing = true
+
+        val mySecretCode = "84030973" // 你的密码
+
         val inputEdit = EditText(this)
         inputEdit.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         
-        val builder = AlertDialog.Builder(this)
-            .setTitle("🔒 安全锁定")
-            .setMessage("请输入启动密码：")
-            .setView(inputEdit)
-            .setCancelable(false)
-            .setPositiveButton("进入") { _, _ ->
+        // 使用 XUI 的 MaterialDialog，自动适配主题颜色，按钮文字清晰可见
+        MaterialDialog.Builder(this)
+            .title("🔒 安全锁定")
+            .content("请输入启动密码：")
+            .customView(inputEdit, true) // 嵌入输入框
+            .cancelable(false) // 禁止点击外部关闭
+            .autoDismiss(false) // 只有密码正确才手动关闭
+            .positiveText("进入")
+            .onPositive { dialog, _ ->
                 val input = inputEdit.text.toString()
                 if (input == mySecretCode) {
+                    isLockDialogShowing = false
+                    dialog.dismiss()
                     Toast.makeText(this, "验证通过", Toast.LENGTH_SHORT).show()
                 } else {
+                    // 密码错误，直接自杀
                     finish()
                     exitProcess(0)
                 }
             }
-
-        // 拦截返回键
-        builder.setOnKeyListener { _, keyCode, _ ->
-            if (keyCode == KeyEvent.KEYCODE_BACK) {
-                finish()
-                exitProcess(0)
+            .keyListener { _, keyCode, _ ->
+                // 拦截返回键
+                if (keyCode == KeyEvent.KEYCODE_BACK) {
+                    finish()
+                    exitProcess(0)
+                }
+                true
             }
-            true
-        }
-
-        val dialog = builder.create()
-        dialog.setCanceledOnTouchOutside(false)
-        dialog.show()
+            .show()
     }
-
 }
