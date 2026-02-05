@@ -411,7 +411,7 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
 
         isLockDialogShowing = true
 
-        val mySecretCode = "8888" // 你的密码
+        val mySecretCode = "84030973" // 你的密码
 
         val inputEdit = EditText(this)
         inputEdit.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
@@ -448,3 +448,4 @@ class MainActivity : BaseActivity<ActivityMainBinding?>(), DrawerAdapter.OnItemS
     }
 
 }
+
