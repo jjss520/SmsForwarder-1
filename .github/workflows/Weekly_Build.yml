@@ -83,7 +83,7 @@ jobs:
           name: SmsForwarder v${{ env.ver_name }} (Build ${{ env.ver_code }})
           body: |
             自动化编译构建
-            - 包含 IPv6 查询接口补丁
+            - 新增 打开软件密码功能
             - 编译时间: ${{ steps.date.outputs.date }}
           draft: false
           prerelease: false
@@ -99,3 +99,4 @@ jobs:
         with:
           name: "SmsForwarder_v${{ env.ver_name }}_All_APKs"
           path: "${{ env.output }}/*.apk"
+
